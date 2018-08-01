@@ -1,6 +1,0 @@
-[2018-07-31 19:20:14,948:INFO] Running on abel
-[2018-07-31 19:20:14,948:INFO] Namespace(batch_norm=True, batch_renorm=False, concat_branches=[0, 0, 1, 0, 1, 0, 1, 0], dropout=False, dset='from_cached_tfrecords', dset_dir='/home/lixin/data/few_m10_0', dtype='complex64', extra_loss=True, final_pool='gap', first_n=None, from_scratch=False, input_res=64, learning_rate={0: 0.001, 32: 0.0002, 40: 4e-05}, logdir='./few_m10_log/0', mag_ang=True, model='two_branch', n_classes=40, n_epochs=48, n_filter_params=8, nchannels=1, nfilters=[16, 16, 32, 32, 64, 64, 128, 128], no_final_fc=True, nonlin='prelu', optimizer='adam', pool='wap', pool_layers=[0, 0, 1, 0, 1, 0, 1, 0], real_inputs=True, regularization_weight=0, round_batches=False, run_id='few_m10_0', skip_val=True, spectral_input=False, spectral_pool=False, test_n=0, test_only=False, train_bsize=16, transform_method='naive', triplet_loss=False, weighted_sph_avg=True)
-[2018-07-31 19:20:14,949:INFO] Loading dataset from from_cached_tfrecords...
-[2018-07-31 19:20:15,172:INFO] Loading model two_branch. Logdir ./few_m10_log/0
-[2018-07-31 19:20:15,173:INFO] Continuing from checkpoint in ./few_m10_log/0
-[2018-07-31 19:20:51,472:INFO] Start training...
