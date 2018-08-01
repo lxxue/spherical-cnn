@@ -32,7 +32,7 @@ def from_cached_tfrecords(args):
 
     fnames = {}
     for t in ['train', 'test', 'val']:
-        fnames[t] = glob.glob(args.dset_dir + '/{}*.tfrecord'.format(t))
+        fnames[t] = glob.glob(args.dset_dir + '/*{}*.tfrecord'.format(t))
 
     out = {'x': x, 'y': y, 'fnames': fnames}
     print('loading dataset; number of tfrecords: {}'
