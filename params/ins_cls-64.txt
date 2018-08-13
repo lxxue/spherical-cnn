@@ -1,0 +1,9 @@
+--dset
+from_cached_tfrecords
+--input_res
+64
+--dtype
+complex64
+--mag_ang
+--real_inputs
+--skip_val

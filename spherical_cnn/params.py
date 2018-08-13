@@ -50,6 +50,8 @@ def parse(args=None):
                         help='number of training epochs')
     parser.add_argument('--from_scratch', '-fs', action='store_true', default=False,
                         help='train from scratch (remove any previous checkpoints in logdir)')
+    parser.add_argument('--ckpt', type=str, default=None,
+                        help='checkpoint filename')
     parser.add_argument('--train_bsize', '-bs', type=int, default=128,
                         help='training batch size')
 

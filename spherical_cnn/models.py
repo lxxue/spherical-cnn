@@ -549,3 +549,128 @@ def get_indim(args):
         indim = (-1, res, res, nch)
 
     return indim
+
+
+def Dataset_retrain(net, dset, args):
+    """ training function using tf Dataset class"""
+
+    max_loops = args.first_n if args.first_n is not None else np.inf
+    indim = get_indim(args)
+
+    # we hack iterators init functions to feed circular list of filenames to
+    if args.dset == 'from_cached_tfrecords':
+        # keep validation in RAM:
+        assert len(dset[1]['fnames']['val']) == 1
+        x, y = util.tfrecord2np(dset[1]['fnames']['val'][0],
+                                indim,
+                                dtype=args.dtype)
+
+        feed_dict_init = {'val': {dset[1]['x']: x, dset[1]['y']: y}}
+        fnames_list = dset[1]['fnames']['train']
+        fnames_list = itertools.cycle(fnames_list)
+        init_iter = {t: dset[0].initializer for t in ['train', 'val']}
+
+    else:
+        feed_dict_init = {'val': {}, 'train': {}}
+        init_iter = {t: dset[1][t] for t in ['train', 'val']}
+
+    # note: graph is finalized after supervisor instantiation
+#    sv = tf.train.Supervisor(logdir=args.logdir,
+#                             summary_op=None,
+#                             save_model_secs=0)
+
+#    with sv.managed_session(config=tf_config()) as sess:
+    with tf.Session() as sess:
+        saver = tf.train.Saver()
+        sess.run(tf.global_variables_initializer())
+        try:
+            saver.restore(sess, args.ckpt)
+        except Exception as e:
+            print(repr(e))
+            print("Ignore not found error")
+        epoch = net['epoch'].eval(session=sess)
+        train_time, valid_time = [], []
+        best_valid_acc = 0
+        train_acc, valid_acc = np.zeros(2)
+        pod_epoch = 0
+        while epoch < args.n_epochs:
+            lr = args.learning_rate.get(epoch, None)
+            if lr is not None:
+                sess.run(net['update_learning_rate'],
+                         feed_dict={net['learning_rate_in']: lr})
+
+            # load training chunk to RAM
+            t0 = time.time()
+            if args.dset == 'from_cached_tfrecords':
+                f = fnames_list.__next__()
+                # print('caching {}'.format(f))
+                x, y = util.tfrecord2np(f, indim, dtype=args.dtype)
+
+                feed_dict_init['train'] = {dset[1]['x']: x, dset[1]['y']: y}
+
+                # shuffle
+                x, y = util.shuffle_all(x, y)
+
+            if args.round_batches:
+                max_loops = len(x) // args.train_bsize
+            t0 = time.time()
+            _, train_acc, _ = loop(sess,
+                                   init_iter['train'],
+                                   {net['training']: True},
+                                   [net['train_op'], net['train_acc'], net['train_summ']],
+                                   #['ignore', 'list', lambda x: sv.summary_computed(sess, x)],
+                                   ['ignore', 'list', lambda x: 0],
+                                   max_loops=max_loops,
+                                   feed_dict_init=feed_dict_init['train'])
+            train_acc = np.mean(train_acc)
+            train_time.append(time.time() - t0)
+
+            # print('train time {:.2f}'.format(train_time[-1]))
+
+            # validate
+            if not args.skip_val:
+                if args.round_batches:
+                    raise NotImplementedError()
+
+                t0 = time.time()
+                valid_acc, valid_confusion = loop(sess,
+                                                  init_iter['val'],
+                                                  {net['training']: False},
+                                                  [net['acc'], net['confusion']],
+                                                  ['list', 'list'],
+                                                  max_loops=max_loops,
+                                                  feed_dict_init=feed_dict_init['val'])
+                valid_acc = np.mean(valid_acc)
+                valid_confusion = np.array(sum(valid_confusion))
+                valid_confusion /= valid_confusion.sum(axis=0)
+                valid_time.append(time.time() - t0)
+                # print('valid time {:.2f}'.format(valid_time[-1]))
+            else:
+                valid_acc = train_acc
+                valid_confusion = np.zeros((args.n_classes, args.n_classes))
+                valid_time.append(0)
+
+            # compute summaries once per epoch
+            summ = sess.run([net['valid_summ'], net['valid_confusion_summ']],
+                            feed_dict={net['valid_acc_epoch']: valid_acc,
+                                       net['valid_confusion_epoch']: valid_confusion})
+            #[sv.summary_computed(sess, s) for s in summ]
+
+            epoch = sess.run(net['update_epoch'])
+            lr = sess.run(net['learning_rate'])
+
+            # always save the best model so far
+            if valid_acc > best_valid_acc:
+                saver.save(sess, os.path.join(args.logdir, 'best.ckpt'))
+                best_valid_acc = valid_acc
+            # and overwrite the latest model
+            saver.save(sess, os.path.join(args.logdir, 'latest.ckpt'))
+
+            logger.info('epoch={}; lr={:.4f} train: {:.4f}, valid: {:.4f}'
+                        .format(epoch, lr, train_acc, valid_acc))
+
+        train_time = np.mean(train_time)
+        valid_time = np.mean(valid_time)
+        saver.save(sess, os.path.join(args.logdir, 'final.ckpt'))
+
+    return train_acc, valid_acc, train_time, valid_time
