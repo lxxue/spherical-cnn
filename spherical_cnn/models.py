@@ -56,6 +56,59 @@ def init_sphcnn(args):
     return harmonics
 
 
+def one_branch(args, convfun=sphconv, **kwargs):
+    """ use one branch only"""
+    method = args.transform_method
+    l_or_h = init_sphcnn(args)
+    net, curr = init_block(args, **kwargs)
+
+    # indices for legendre or harmonics
+    high = 0
+    low = 1
+    for i, (nf, pool) in enumerate(zip(args.nfilters, args.pool_layers)):
+        name = 'conv{}'.format(i)
+        if not pool:
+            with tf.variable_scope(name):
+                net[name], curr = dup(block(args, convfun, net['training'], curr, nf,
+                                            n_filter_params=args.n_filter_params,
+                                            harmonics_or_legendre=l_or_h[high],
+                                            method=method))
+        else:
+            with tf.variable_scope(name):
+                print("Here should be a pool")
+                # force spectral pool in first layer if spectral input
+                spectral_pool = True if (args.spectral_input and i == 0) else args.spectral_pool
+                net[name], curr = dup(block(args, convfun, net['training'], curr, nf,
+                                            n_filter_params=args.n_filter_params,
+                                            harmonics_or_legendre=l_or_h[high],
+                                            method=method,
+                                            spectral_pool=pool if spectral_pool else 0,
+                                            harmonics_or_legendre_low=l_or_h[low]))
+                if not spectral_pool:
+                    # weighted avg pooling
+                    if args.pool == 'wap':
+                        curr = area_weights(tf.layers.average_pooling2d(area_weights(curr),
+                                                                        2*pool, 2*pool,
+                                                                        'same'),
+                                            invert=True)
+                    elif args.pool == 'avg':
+                        curr = tf.layers.average_pooling2d(curr,
+                                                           2*pool, 2*pool,
+                                                           'same')
+                    elif args.pool == 'max':
+                        curr = tf.layers.max_pooling2d(curr,
+                                                       2*pool, 2*pool,
+                                                       'same')
+                    else:
+                        raise ValueError('args.pool')
+
+        if pool:
+            high += 1
+            low += 1
+
+    return sphcnn_afterconv(curr, net, args, l_or_h[high])
+
+
 def two_branch(args, convfun=sphconv, **kwargs):
     """ Model, that splits input in two branches, and concatenate intermediate feature maps. """
     method = args.transform_method
@@ -95,7 +148,7 @@ def two_branch(args, convfun=sphconv, **kwargs):
                     if not spectral_pool:
                         # weighted avg pooling
                         if args.pool == 'wap':
-                            curr[b] = area_weights(tf.layers.average_pooling2d(area_weights(curr[b]),
+                            curr[b] = area_weights(tf.layers.average_pooling2d(area_weights(curr),
                                                                                2*pool, 2*pool,
                                                                                'same'),
                                                    invert=True)

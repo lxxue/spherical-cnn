@@ -22,9 +22,10 @@ def from_cached_tfrecords(args):
     # magnitude is ray length
     # phase is angle between ray and normal
     # we found that it is best to treat them independently, though
-    dataset = dataset.map(lambda x, y: (tf.concat([tf.abs(x),
-                                                   tf.imag(x/(tf.cast(tf.abs(x), 'complex64') +1e-8))],
-                                                  axis=-1), y))
+    #dataset = dataset.map(lambda x, y: (tf.concat([tf.abs(x),
+    #                                               tf.imag(x/(tf.cast(tf.abs(x), 'complex64') +1e-8))],
+    #                                              axis=-1), y))
+    
 
     # we use same batch sizes for train/val/test
     dataset = dataset.batch(args.train_bsize)
