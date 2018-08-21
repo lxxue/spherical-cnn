@@ -1,3 +1,12 @@
+--dset
+from_cached_tfrecords
+--n_classes
+10
+--input_res
+64
+--dtype
+float32
+--real_inputs
 --model=two_branch
 --nonlin
 prelu
@@ -6,6 +15,8 @@ prelu
 --weighted_sph_avg
 --n_filter_params
 8
+--nchannels
+6
 --nfilters
 16,16,32,32,64,64,128,128
 --pool_layers

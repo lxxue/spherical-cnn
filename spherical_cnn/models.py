@@ -75,7 +75,6 @@ def one_branch(args, convfun=sphconv, **kwargs):
                                             method=method))
         else:
             with tf.variable_scope(name):
-                print("Here should be a pool")
                 # force spectral pool in first layer if spectral input
                 spectral_pool = True if (args.spectral_input and i == 0) else args.spectral_pool
                 net[name], curr = dup(block(args, convfun, net['training'], curr, nf,
@@ -115,10 +114,13 @@ def two_branch(args, convfun=sphconv, **kwargs):
     l_or_h = init_sphcnn(args)
     net, curr = init_block(args, **kwargs)
 
-    assert tfnp.shape(curr)[-1] == 2
+    assert tfnp.shape(curr)[-1] == 6
 
-    curr = [curr[..., 0][..., np.newaxis],
-            curr[..., 1][..., np.newaxis]]
+    #curr = [curr[..., 0][..., np.newaxis],
+    #        curr[..., 1][..., np.newaxis]]
+    curr = [tf.gather(curr, [0,3], axis=-1),
+            tf.gather(curr, [1,2,4,5], axis=-1)]
+
 
     # indices for legendre or harmonics
     high = 0
@@ -148,7 +150,7 @@ def two_branch(args, convfun=sphconv, **kwargs):
                     if not spectral_pool:
                         # weighted avg pooling
                         if args.pool == 'wap':
-                            curr[b] = area_weights(tf.layers.average_pooling2d(area_weights(curr),
+                            curr[b] = area_weights(tf.layers.average_pooling2d(area_weights(curr[b]),
                                                                                2*pool, 2*pool,
                                                                                'same'),
                                                    invert=True)
@@ -377,14 +379,17 @@ def Dataset_train(net, dset, args):
 
     max_loops = args.first_n if args.first_n is not None else np.inf
     indim = get_indim(args)
+    tfrecord_shape = (-1, args.nchannels, args.input_res, args.input_res)
 
     # we hack iterators init functions to feed circular list of filenames to
     if args.dset == 'from_cached_tfrecords':
         # keep validation in RAM:
         assert len(dset[1]['fnames']['val']) == 1
         x, y = util.tfrecord2np(dset[1]['fnames']['val'][0],
-                                indim,
+                                #indim,
+                                tfrecord_shape,
                                 dtype=args.dtype)
+        x = x.transpose([0,2,3,1])
 
         feed_dict_init = {'val': {dset[1]['x']: x, dset[1]['y']: y}}
         fnames_list = dset[1]['fnames']['train']
@@ -418,7 +423,9 @@ def Dataset_train(net, dset, args):
             if args.dset == 'from_cached_tfrecords':
                 f = fnames_list.__next__()
                 # print('caching {}'.format(f))
-                x, y = util.tfrecord2np(f, indim, dtype=args.dtype)
+                #x, y = util.tfrecord2np(f, indim, dtype=args.dtype)
+                x, y = util.tfrecord2np(f, tfrecord_shape, dtype=args.dtype)
+                x = x.transpose([0,2,3,1])
 
                 feed_dict_init['train'] = {dset[1]['x']: x, dset[1]['y']: y}
 
@@ -491,13 +498,26 @@ def Dataset_train(net, dset, args):
 
 def Dataset_test(net, dset, args, ckpt='final.ckpt'):
     indim = get_indim(args)
+    tfrecord_shape = (-1, args.nchannels, args.input_res, args.input_res)
 
     if args.dset == 'from_cached_tfrecords':
         res, nch = args.input_res, args.nchannels
-        assert len(dset[1]['fnames']['test']) == 1
-        x, y = util.tfrecord2np(dset[1]['fnames']['test'][0],
-                                indim,
-                                dtype=args.dtype)
+        #assert len(dset[1]['fnames']['test']) == 1
+        x_all = []
+        y_all = []
+        for i in range(len(dset[1]['fnames']['test'])):
+            x, y = util.tfrecord2np(dset[1]['fnames']['test'][i],
+                                    #indim,
+                                    tfrecord_shape,
+                                    dtype=args.dtype)
+            x = x.transpose([0,2,3,1])
+            x_all.append(x)
+            y_all.append(y)
+
+        x = np.concatenate(x_all, axis=0)
+        y = np.concatenate(y_all, axis=0)
+        print(x.shape)
+        print(y.shape)
 
         feed_dict_init = {dset[1]['x']: x, dset[1]['y']: y}
         init_iter = dset[0].initializer
@@ -541,10 +561,13 @@ def get_tfrecord_activations(basedir, fname_or_xy, layers,
     assert isinstance(layers[0], str)
 
     model, args, dset = load_model_dset(basedir, args_in if args_in is not None else {})
+    tfrecord_shape = (-1, args.nchannels, args.input_res, args.input_res)
     if isinstance(fname_or_xy, str):
         x, y = util.tfrecord2np(fname_or_xy,
-                                get_indim(args),
+                                #get_indim(args),
+                                tfrecord_shape,
                                 dtype=args.dtype)
+        x = x.transpose([0,2,3,1])
     else:
         x, y = fname_or_xy
 
@@ -609,14 +632,17 @@ def Dataset_retrain(net, dset, args):
 
     max_loops = args.first_n if args.first_n is not None else np.inf
     indim = get_indim(args)
+    tfrecord_shape = (-1, args.nchannels, args.input_res, args.input_res)
 
     # we hack iterators init functions to feed circular list of filenames to
     if args.dset == 'from_cached_tfrecords':
         # keep validation in RAM:
         assert len(dset[1]['fnames']['val']) == 1
         x, y = util.tfrecord2np(dset[1]['fnames']['val'][0],
-                                indim,
+                                #indim,
+                                tfrecord_shape,
                                 dtype=args.dtype)
+        x = x.transpose([0,2,3,1])
 
         feed_dict_init = {'val': {dset[1]['x']: x, dset[1]['y']: y}}
         fnames_list = dset[1]['fnames']['train']
@@ -657,7 +683,9 @@ def Dataset_retrain(net, dset, args):
             if args.dset == 'from_cached_tfrecords':
                 f = fnames_list.__next__()
                 # print('caching {}'.format(f))
-                x, y = util.tfrecord2np(f, indim, dtype=args.dtype)
+                #x, y = util.tfrecord2np(f, indim, dtype=args.dtype)
+                x, y = util.tfrecord2np(f, tfrecord_shape, dtype=args.dtype)
+                x = x.transpose([0,2,3,1])
 
                 feed_dict_init['train'] = {dset[1]['x']: x, dset[1]['y']: y}
 
